@@ -1,0 +1,22 @@
+{{- if .Values.dnsService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "localdns.fullname" . }}-dns
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app: {{ include "localdns.name" . }}
+    chart: {{ include "localdns.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  type: {{ .Values.dnsService.type }}
+  ports:
+    - port: {{ .Values.dnsService.port }}
+      targetPort: 53
+      protocol: UDP
+      name: dns
+  selector:
+    app: {{ include "localdns.name" . }}
+    release: {{ .Release.Name }}
+{{- end }}
