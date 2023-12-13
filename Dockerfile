@@ -13,12 +13,12 @@ FROM build_deps AS build
 
 COPY . .
 
-RUN go build -o webhook .
+RUN CGO_ENABLED=0 GOOS=linux go build -o webhook .
 
-FROM golang:1.19 AS runtime
-
-RUN apt-get update -y && apt-get install -y ca-certificates
+FROM debian:bullseye-slim AS app
 
 COPY --from=build /workspace/webhook /usr/local/bin/webhook
+
+RUN apt-get update -y && apt-get install -y ca-certificates
 
 ENTRYPOINT ["webhook"]
