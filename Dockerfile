@@ -1,4 +1,4 @@
-FROM golang:1.21 AS build_deps
+FROM golang:1.26.1 AS build_deps
 
 RUN apt-get update -y && apt-get install -y git
 
@@ -15,7 +15,7 @@ COPY . .
 
 RUN go build -o webhook .
 
-FROM golang:1.21 AS runtime
+FROM golang:1.26.1 AS runtime
 
 RUN apt-get update -y && apt-get install -y ca-certificates
 

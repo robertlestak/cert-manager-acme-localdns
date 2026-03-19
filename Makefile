@@ -7,28 +7,19 @@ IMAGE_TAG := "latest"
 
 OUT := $(shell pwd)/_out
 
-KUBE_VERSION=1.25.0
+KUBE_VERSION=1.35.0
 
 $(shell mkdir -p "$(OUT)")
-export TEST_ASSET_ETCD=_test/kubebuilder/etcd
-export TEST_ASSET_KUBE_APISERVER=_test/kubebuilder/kube-apiserver
-export TEST_ASSET_KUBECTL=_test/kubebuilder/kubectl
 
-test: _test/kubebuilder
+test:
+	KUBEBUILDER_ASSETS=$$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use $(KUBE_VERSION) -p path) && \
+	TEST_ASSET_KUBE_APISERVER=$$KUBEBUILDER_ASSETS/kube-apiserver \
+	TEST_ASSET_ETCD=$$KUBEBUILDER_ASSETS/etcd \
+	TEST_ASSET_KUBECTL=$$KUBEBUILDER_ASSETS/kubectl \
 	$(GO) test -v .
 
-_test/kubebuilder:
-	curl -fsSL https://go.kubebuilder.io/test-tools/$(KUBE_VERSION)/$(OS)/$(ARCH) -o kubebuilder-tools.tar.gz
-	mkdir -p _test/kubebuilder
-	tar -xvf kubebuilder-tools.tar.gz
-	mv kubebuilder/bin/* _test/kubebuilder/
-	rm kubebuilder-tools.tar.gz
-	rm -R kubebuilder
-
-clean: clean-kubebuilder
-
-clean-kubebuilder:
-	rm -Rf _test/kubebuilder
+clean:
+	rm -rf $(OUT)
 
 build:
 	docker build -t "$(IMAGE_NAME):$(IMAGE_TAG)" .
