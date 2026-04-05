@@ -1,0 +1,92 @@
+name: release
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version_clean=${VERSION#v}" >> $GITHUB_OUTPUT
+
+      - name: Generate semantic version tags
+        id: semver
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_CLEAN="${{ steps.version.outputs.version_clean }}"
+
+          # Parse semver (e.g., 1.3.0)
+          if [[ $VERSION_CLEAN =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+
+            # Build tag list: v1.3.0, 1.3.0, 1.3, 1, latest
+            TAGS="${{ secrets.DOCKER_HUB_USERNAME }}/cert-manager-acme-localdns:${VERSION}"
+            TAGS="$TAGS,${{ secrets.DOCKER_HUB_USERNAME }}/cert-manager-acme-localdns:${VERSION_CLEAN}"
+            TAGS="$TAGS,${{ secrets.DOCKER_HUB_USERNAME }}/cert-manager-acme-localdns:${MAJOR}.${MINOR}"
+            TAGS="$TAGS,${{ secrets.DOCKER_HUB_USERNAME }}/cert-manager-acme-localdns:${MAJOR}"
+            TAGS="$TAGS,${{ secrets.DOCKER_HUB_USERNAME }}/cert-manager-acme-localdns:latest"
+          else
+            # Fallback if not semver
+            TAGS="${{ secrets.DOCKER_HUB_USERNAME }}/cert-manager-acme-localdns:${VERSION}"
+            TAGS="$TAGS,${{ secrets.DOCKER_HUB_USERNAME }}/cert-manager-acme-localdns:latest"
+          fi
+
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Setup kubeconfig
+        run: |
+          export KUBECONFIG=/tmp/kubeconfig
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $KUBECONFIG
+          echo "KUBECONFIG=$KUBECONFIG" >> $GITHUB_ENV
+
+      - name: Create buildx builder
+        run: |
+          BUILDER_NAME="builder-$(echo $GITHUB_RUN_ID | cut -c 1-8)"
+          echo BUILDER_NAME=$BUILDER_NAME >> $GITHUB_ENV
+
+          docker buildx create \
+            --bootstrap \
+            --name=$BUILDER_NAME \
+            --driver=kubernetes \
+            --platform=linux/amd64 \
+            --node=builder-amd64 \
+            --driver-opt=namespace=buildx,nodeselector="kubernetes.io/arch=amd64"
+
+          docker buildx create \
+            --append \
+            --bootstrap \
+            --name=$BUILDER_NAME \
+            --driver=kubernetes \
+            --platform=linux/arm64 \
+            --node=builder-arm64 \
+            --driver-opt=namespace=buildx,nodeselector="kubernetes.io/arch=arm64"
+
+      - name: Login to Docker Hub
+        run: |
+          echo ${{ secrets.DOCKER_HUB_PAT }} | docker login --password-stdin --username ${{ secrets.DOCKER_HUB_USERNAME }}
+
+      - name: Build and push
+        run: |
+          docker buildx build --builder=$BUILDER_NAME . \
+            --platform linux/amd64,linux/arm64 \
+            $(echo "${{ steps.semver.outputs.tags }}" | sed 's/,/ -t /g' | sed 's/^/-t /') \
+            --push \
+            --no-cache
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker buildx rm $BUILDER_NAME
