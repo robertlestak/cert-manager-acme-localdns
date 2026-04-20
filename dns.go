@@ -81,14 +81,12 @@ func (e *localDNSProviderSolver) addDNSAnswer(q dns.Question, msg *dns.Msg, req 
 			return nil
 		}
 		return nil
-		// Always return loopback for any A query
 	case dns.TypeA:
 		l.Debug("handling A request")
-		v := "127.0.0.1"
-		if q.Name == e.DomainName && !e.PublicIPIsCNAME() {
-			v = e.PublicIP
+		if q.Name != e.DomainName || e.PublicIPIsCNAME() {
+			return nil
 		}
-		rr, err := dns.NewRR(fmt.Sprintf("%s 5 IN A %s", q.Name, v))
+		rr, err := dns.NewRR(fmt.Sprintf("%s 5 IN A %s", q.Name, e.PublicIP))
 		if err != nil {
 			return err
 		}
